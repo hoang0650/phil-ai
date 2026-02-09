@@ -6,28 +6,44 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 
 # CẤU HÌNH
-TRANSLATOR_MODEL = "vinai/PhoGPT-4B-Chat"
+TRANSLATOR_MODEL = "Qwen/Qwen2.5-7B-Instruct" 
 OUTPUT_FILE = "data/processed/combined_vietnamese_data.jsonl"
-SAMPLES_TO_TRANSLATE = 5000  # Số mẫu lấy từ mỗi dataset (Tăng lên nếu có thời gian)
+SAMPLES_TO_TRANSLATE = 5000 
 
 def load_translator():
-    print(">>> 🔄 Đang tải PhoGPT...")
-    tokenizer = AutoTokenizer.from_pretrained(TRANSLATOR_MODEL, trust_remote_code=True)
+    print(f">>> 🔄 Đang tải Translator: {TRANSLATOR_MODEL}...")
+    tokenizer = AutoTokenizer.from_pretrained(TRANSLATOR_MODEL)
     model = AutoModelForCausalLM.from_pretrained(
-        TRANSLATOR_MODEL, torch_dtype=torch.float16, device_map="auto", trust_remote_code=True
+        TRANSLATOR_MODEL, 
+        torch_dtype=torch.float16, 
+        device_map="auto"
     )
     return model, tokenizer
 
 def translate_text(model, tokenizer, text):
-    prompt = f"### Instruction:\nDịch phần giải thích sau sang Tiếng Việt. GIỮ NGUYÊN CODE, TÊN BIẾN, TIẾNG ANH CHUYÊN NGÀNH.\n\nInput:\n{text[:1500]}\n\n### Response:\n"
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    # Prompt dành riêng cho Qwen
+    messages = [
+        {"role": "system", "content": "Bạn là một biên dịch viên kỹ thuật chuyên nghiệp. Hãy dịch đoạn văn bản sau sang Tiếng Việt. QUY TẮC: Giữ nguyên tất cả Code, tên biến, tên hàm và thuật ngữ tiếng Anh. Chỉ dịch phần lời giải thích."},
+        {"role": "user", "content": text[:2000]}
+    ]
+    text_input = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    
+    inputs = tokenizer([text_input], return_tensors="pt").to(model.device)
+    
     with torch.no_grad():
         outputs = model.generate(
-            inputs.input_ids, max_new_tokens=512, do_sample=True, temperature=0.6,
-            top_p=0.9, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id
+            **inputs,
+            max_new_tokens=512,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.9
         )
+        
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return response.split("### Response:")[-1].strip() if "### Response:" in response else response
+    
+    if "assistant" in response:
+        return response.split("assistant")[-1].strip()
+    return response
 
 def run():
     os.makedirs("data/processed", exist_ok=True)

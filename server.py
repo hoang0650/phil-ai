@@ -1,22 +1,21 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import os, json
 import torch
 import faiss
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from sentence_transformers import SentenceTransformer
+from src.inference.engine import get_engine
 
 app = FastAPI()
 
-# ---------------- BASE MODEL ----------------
-MODEL_PATH = "./base-ai-model"  # Đường dẫn model đã train sẵn
-tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_PATH,
-    device_map="auto",
-    torch_dtype=torch.float16
-)
+# ---------------- CONFIGURATION ----------------
+ENGINE_TYPE = os.environ.get("ENGINE_TYPE", "transformers") # transformers, vllm, tgi, llama.cpp
+MODEL_PATH = os.environ.get("MODEL_PATH", "./phil-ai")
+TGI_URL = os.environ.get("TGI_URL", "http://localhost:8080")
+
+# Initialize Inference Engine
+engine = get_engine(ENGINE_TYPE, model_path=MODEL_PATH, base_url=TGI_URL)
 
 # Embedding model
 embedder = SentenceTransformer("intfloat/e5-small")
@@ -93,13 +92,11 @@ Câu hỏi khách:
 {data.question}
 """
 
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    outputs = model.generate(**inputs, max_new_tokens=200, do_sample=True, temperature=0.7)
-    answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    answer = engine.generate(prompt)
 
     return {"answer": answer.strip()}
 
-# ---------------- RAILWAY PORT ----------------
+# ---------------- SERVER RUN ----------------
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))

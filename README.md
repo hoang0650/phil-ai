@@ -1,7 +1,7 @@
-# 🏭 Phil AI Training Factory
+# 🏭 Phil AI Training & Inference Factory
 
 > **"Xưởng đúc" Trí tuệ nhân tạo cho Phil - Thực thể số Việt Nam (Vietnam's Sovereign Digital Human).**
-> Dự án này chuyên biệt hóa để Fine-tune các mô hình SOTA (State-of-the-Art) hạng nặng trên phần cứng **NVIDIA H200 SXM (141GB VRAM)**.
+> Dự án này chuyên biệt hóa để Fine-tune các mô hình SOTA (State-of-the-Art) hạng nặng trên phần cứng **NVIDIA H200 SXM (141GB VRAM)** và cung cấp giải pháp Inference đa nền tảng.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![Hardware](https://img.shields.io/badge/Hardware-H200_SXM-green.svg)
@@ -23,12 +23,31 @@ Hệ thống này không tạo ra một chatbot, mà tạo ra 4 thành phần c�
 
 ---
 
+## 🚀 Tính năng mới: Đa nền tảng Inference
+
+Hệ thống hiện đã tích hợp các engine inference mạnh mẽ nhất để tối ưu hóa tốc độ và tài nguyên cho việc triển khai AI Sale Agent:
+
+1.  **vLLM**: Tối ưu hóa throughput cho GPU NVIDIA, hỗ trợ PagedAttention.
+2.  **Text Generation Inference (TGI)**: Giải pháp từ HuggingFace cho việc triển khai production.
+3.  **llama.cpp**: Chạy mô hình trên CPU hoặc GPU với định dạng GGUF, cực kỳ tiết kiệm tài nguyên.
+4.  **Transformers**: Backend mặc định cho việc thử nghiệm nhanh.
+
+---
+
+## 🔄 Chiến lược "Cuốn chiếu" (Rolling Strategy)
+
+Để tiết kiệm chi phí thuê ổ cứng trên RunPod, dự án triển khai chiến lược **"Cuốn chiếu"** trong script `run_all.sh`:
+- **Quy trình**: Tải Model Gốc -> Huấn luyện (Fine-tune) -> Upload kết quả lên HuggingFace -> **Xóa Model Gốc & Cache** -> Chuyển sang model tiếp theo.
+- **Lợi ích**: Giảm yêu cầu dung lượng Disk từ >500GB xuống còn khoảng 200GB, ngay cả khi làm việc với các model khổng lồ như DeepSeek 70B hay InternVL2 76B.
+
+---
+
 ## 🛠️ Yêu Cầu Hệ Thống
 
-Dự án này được tối ưu hóa cho **Runpod H200 Pod**. Không chạy được trên GPU dân dụng (RTX 4090) hoặc A100 80GB đơn lẻ (đối với Vision & Brain training).
+Dự án này được tối ưu hóa cho **Runpod H200 Pod**.
 
 * **GPU:** 1x NVIDIA H200 SXM (141GB VRAM).
-* **Disk:** Tối thiểu 200GB Container Disk / Volume.
+* **Disk:** Tối thiểu 200GB Container Disk / Volume (Nhờ chiến lược Cuốn chiếu).
 * **RAM:** 128GB+.
 * **Internet:** Runpod Datacenter Speed (Download Dataset ~10Gbps).
 
@@ -37,20 +56,15 @@ Dự án này được tối ưu hóa cho **Runpod H200 Pod**. Không chạy đ�
 ## 📂 Cấu Trúc Dự Án
 
 ```text
-phil-training-factory/
+ai-sale-agent/
 ├── configs/                   # Cấu hình Hyperparameters (YAML)
-│   ├── deepseek_70b.yaml      # Cấu hình Brain
-│   ├── whisper_large.yaml     # Cấu hình Ears
-│   └── ...
 ├── data/                      # Kho dữ liệu
-│   ├── raw/                   # Dữ liệu thô
-│   └── processed/             # Dữ liệu sạch (JSONL, WAV)
-├── scripts/                   # Shell scripts điều khiển
-│   ├── run_internvl2.sh       # Script riêng cho Vision
-│   └── run_all.sh             # Script "One-Click" chạy tất cả
+├── scripts/                   # Shell scripts điều khiển & Export GGUF
 ├── src/                       # Mã nguồn Python
 │   ├── data_processing/       # Module dịch thuật & xử lý Audio
-│   └── training/              # Module train Core (Unsloth & F5-TTS)
+│   ├── training/              # Module train Core (Unsloth & F5-TTS)
+│   └── inference/             # Engine xử lý suy luận đa nền tảng (MỚI)
+├── server.py                  # API Server tích hợp RAG & AI Agent
 └── requirements.txt           # Dependencies
 ```
 
@@ -58,72 +72,56 @@ phil-training-factory/
 
 ## 🚀 Hướng Dẫn Vận Hành (Step-by-Step)
 
-**Bước 1: Khởi tạo Môi trường**
+### Bước 1: Khởi tạo Môi trường
 Kết nối SSH vào Runpod và chạy:
 ```bash
-# 1. Cài đặt thư viện
 pip install -r requirements.txt
-
-# 2. Cấu hình biến môi trường
-# Tạo file .env và điền Token HF của bạn vào
+### Khai báo nhiều biến môi trường
+### Cách 1
 echo "HF_TOKEN=hf_write_token_here" > .env
+echo "WANDB_API_KEY=write_wandb_api_key" >> .env
+### Cách 2
+cat << EOF > .env
+HF_TOKEN=hf_write_token_here
+WANDB_API_KEY=write_wandb_api_key
+EOF
 ```
-**Bước 2: Chuẩn bị "Nguyên liệu" (Data Processing)**
-Giai đoạn này dùng vinai/PhoGPT-4B để Việt hóa các bộ dataset Code chất lượng cao.
-```bash
-python3 src/data_processing/translator_ultimate.py
-```
-Output: `data/processed/combined_vietnamese_data.jsonl`
 
-**Bước 3: Training**
-Bạn có thể chạy từng module hoặc chạy tất cả.
-
-**Cách 1: Chạy tự động (Khuyên dùng)
+### Bước 2: Chạy toàn bộ quy trình (Chiến lược Cuốn chiếu)
 ```bash
 chmod +x scripts/*.sh
 ./scripts/run_all.sh
 ```
-Lưu ý: Quá trình này mất khoảng 5-8 tiếng trên H200.
 
-**Cách 2: Chạy thủ công từng phần**
-1. **Train Brain (DeepSeek 70B):**
+### Bước 3: Triển khai Inference Server
+Bạn có thể chọn engine thông qua biến môi trường:
+
+**Chạy với vLLM:**
 ```bash
-python3 src/training/train_generic.py --config configs/deepseek_70b.yaml
+export ENGINE_TYPE=vllm
+export MODEL_PATH=./path-to-your-model
+python server.py
 ```
-2. **Train Eyes (InternVL2 76B):**
+
+**Chạy với llama.cpp (GGUF):**
 ```bash
-./scripts/run_internvl2.sh
+export ENGINE_TYPE=llama.cpp
+export MODEL_PATH=./model.gguf
+python server.py
 ```
-3. **Train Ears (Whisper):**
-```bash
-python3 src/training/train_generic.py --config configs/whisper_large.yaml
-```
-4. **Train Mouth (F5-TTS):**
-Yêu cầu: Đã bỏ file giọng mẫu vào `data/processed/phil_voice_studio/`
-```bash
-python3 src/training/train_f5_tts.py
-```
+
+---
+
+## ☁️ Triển khai lên RunPod
+
+Xem chi tiết trong file [RunPod_Deployment_Guide.docx](./RunPod_Deployment_Guide.docx) để biết cách thiết lập môi trường GPU trên RunPod.
+
 ---
 
 ## 📦 Output Artifacts (Sản phẩm đầu ra)
-Sau khi train xong, các model sẽ được tự động upload lên HuggingFace của bạn với tên:
-* phil-ai/Phil-70B-Coder-N1 (Brain)
-* phil-ai/Phil-InternVL2-76B-N1 (Vision)
-* phil-ai/Phil-Ear-N1 (STT)
-* phil-ai/Phil-F5-TTS (TTS Checkpoint)
+Sau khi train xong, các model sẽ được tự động upload lên HuggingFace của bạn.
 
 ---
 
-## 🔌 Triển khai Inference (Phil-CLI)
-Để sử dụng các model này, hãy chuyển sang project phil-cli và sử dụng cấu hình Docker Compose sau trên máy chủ Inference (Yêu cầu VRAM > 110GB):
-```yaml
-# Trích đoạn docker-compose.yml
-services:
-  ai-brain:
-    image: vllm/vllm-openai
-    command: --model phil-ai/Phil-70B-Coder-N1 --quantization awq ...
-  
-  ai-vision:
-    image: openmmlab/lmdeploy
-    command: lmdeploy serve api_server phil-ai/Phil-InternVL2-76B-v1 ...
-```
+## 📄 Giấy phép
+MIT License.

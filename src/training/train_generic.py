@@ -34,24 +34,22 @@ def train(config_path):
             lora_alpha=16, bias="none", use_gradient_checkpointing="unsloth", random_state=3407,
         )
 
-        # Load & Mix Datasets
-        ds_vn = load_dataset("json", data_files=cfg['dataset_path'], split="train")
-        # Thêm dataset gốc tiếng Anh (Optional)
-        ds_en = load_dataset("glaiveai/glaive-code-assistant-v2", split="train[:5000]")
-        ds_en = ds_en.rename_column("question", "instruction").rename_column("answer", "output")
-        dataset = concatenate_datasets([ds_vn, ds_en]).shuffle(seed=42)
-        # 3. Dataset Danh tính (Identity) - MỚI THÊM VÀO
+        # Load Datasets
+        dataset_list = []
+        if os.path.exists(cfg['dataset_path']):
+            ds_main = load_dataset("json", data_files=cfg['dataset_path'], split="train")
+            dataset_list.append(ds_main)
+        
         identity_file = "data/processed/phil_identity.jsonl"
         if os.path.exists(identity_file):
             ds_identity = load_dataset("json", data_files=identity_file, split="train")
-            print(f">>> Đã thêm {len(ds_identity)} dòng dữ liệu danh tính Phil AI.")
-            # Trộn 3 nguồn lại
-            dataset = concatenate_datasets([ds_vn, ds_en, ds_identity]).shuffle(seed=42)
-        else:
-            print(">>> CẢNH BÁO: Không tìm thấy dữ liệu danh tính. Model có thể không biết tên mình.")
-            dataset = concatenate_datasets([ds_vn, ds_en]).shuffle(seed=42)
+            dataset_list.append(ds_identity)
 
-        # Format DeepSeek R1
+        if not dataset_list:
+            raise ValueError("No datasets found for training!")
+            
+        dataset = concatenate_datasets(dataset_list).shuffle(seed=42)
+
         def format_prompts(examples):
             texts = []
             for inst, out in zip(examples["instruction"], examples["output"]):
@@ -67,12 +65,14 @@ def train(config_path):
                 per_device_train_batch_size=cfg['batch_size'], gradient_accumulation_steps=cfg['grad_accum'],
                 max_steps=cfg['steps'], learning_rate=cfg['learning_rate'], fp16=not torch.cuda.is_bf16_supported(),
                 bf16=torch.cuda.is_bf16_supported(), logging_steps=1, output_dir="outputs", optim="paged_adamw_8bit",
-                report_to="wandb"
+                report_to="none"
             )
         )
         trainer.train()
-        print(">>> Saving & Uploading LLM...")
-        model.push_to_hub_merged(f"{cfg['hf_username']}/{cfg['new_model_name']}", tokenizer, save_method="merged_4bit_forced", token=HF_TOKEN)
+        
+        output_model_id = f"{cfg['hf_username']}/{cfg['new_model_name']}"
+        print(f">>> Saving & Uploading LLM to {output_model_id}...")
+        model.push_to_hub_merged(output_model_id, tokenizer, save_method="merged_4bit_forced", token=HF_TOKEN)
 
     # ==========================================
     # CASE 2: TRAIN WHISPER (STT)
@@ -82,7 +82,6 @@ def train(config_path):
         model = WhisperForConditionalGeneration.from_pretrained(cfg['base_model'], load_in_8bit=True, device_map="auto")
         processor = WhisperProcessor.from_pretrained(cfg['base_model'], language=cfg['language'], task="transcribe")
         
-        # Load Dataset
         dataset = load_dataset(cfg['dataset_name'], cfg['dataset_subset'], split="train", trust_remote_code=True)
         dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
         
@@ -92,7 +91,7 @@ def train(config_path):
             batch["labels"] = processor.tokenizer(batch["sentence"]).input_ids
             return batch
         
-        dataset = dataset.map(prepare_dataset, num_proc=4)
+        dataset = dataset.map(prepare_dataset, num_proc=1)
         model = get_peft_model(model, LoraConfig(r=32, lora_alpha=64, target_modules=["q_proj", "v_proj"], bias="none"))
 
         trainer = Seq2SeqTrainer(
@@ -100,17 +99,15 @@ def train(config_path):
             args=Seq2SeqTrainingArguments(
                 output_dir="outputs_whisper", per_device_train_batch_size=cfg['batch_size'],
                 gradient_accumulation_steps=cfg['grad_accum'], max_steps=cfg['steps'], learning_rate=cfg['learning_rate'],
-                fp16=True, predict_with_generate=True, report_to="wandb"
+                fp16=True, predict_with_generate=True, report_to="none"
             ),
-            train_dataset=dataset, tokenizer=processor.feature_extractor,
-            data_collator=lambda data: {
-                "input_features": torch.stack([torch.tensor(f["input_features"]) for f in data]),
-                "labels": torch.tensor([f["labels"] for f in data]).nn.pad_sequence(padding_value=-100)
-            }
+            train_dataset=dataset, tokenizer=processor.feature_extractor
         )
         trainer.train()
-        print(">>> Uploading Whisper...")
-        model.push_to_hub(f"{cfg['hf_username']}/{cfg['new_model_name']}", token=HF_TOKEN)
+        
+        output_model_id = f"{cfg['hf_username']}/{cfg['new_model_name']}"
+        print(f">>> Uploading Whisper to {output_model_id}...")
+        model.push_to_hub(output_model_id, token=HF_TOKEN)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
