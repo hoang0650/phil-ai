@@ -42,6 +42,24 @@ Hệ thống hiện đã tích hợp các engine inference mạnh mẽ nhất đ
 
 ---
 
+## 🔗 Tích hợp với Phil-CLI
+
+Phil-AI hiện là nền tảng trí tuệ nhân tạo cốt lõi cho **Phil-CLI**, cung cấp các model tự train thay thế hoàn toàn các API bên ngoài như Anthropic.
+
+### Cách tích hợp:
+1. **Brain Model**: Cung cấp khả năng suy luận và lập trình (thay thế GPT-4/Claude)
+2. **Vision Model**: Xử lý hình ảnh và OCR (thay thế GPT-4V)
+3. **Audio Models**: Chuyển đổi giọng nói sang văn bản và ngược lại
+4. **Security Integration**: Tích hợp với sandbox và security policies của Phil-CLI
+
+### Lợi ích:
+- ✅ **Độc lập hoàn toàn**: Không phụ thuộc vào API bên ngoài
+- ✅ **Bảo mật cao**: Dữ liệu không rời khỏi hệ thống
+- ✅ **Tối ưu chi phí**: Không có chi phí API định kỳ
+- ✅ **Tùy chỉnh linh hoạt**: Có thể fine-tune theo nhu cầu riêng
+
+---
+
 ## 🛠️ Yêu Cầu Hệ Thống
 
 Dự án này được tối ưu hóa cho **Runpod H200 Pod**.
@@ -167,6 +185,20 @@ Xem chi tiết trong file [RunPod_Deployment_Guide.docx](https://docs.google.com
 
 ## 📦 Output Artifacts (Sản phẩm đầu ra)
 Sau khi train xong, các model sẽ được tự động upload lên HuggingFace của bạn.
+
+---
+
+## 🔧 Tích hợp với Phil-CLI
+
+Để sử dụng Phil-AI trong Phil-CLI, cấu hình các endpoints trong file `config.py`:
+
+```python
+# Phil-AI Model Endpoints
+BRAIN_MODEL_ENDPOINT = "http://localhost:8000/v1"
+VISION_MODEL_ENDPOINT = "http://localhost:8001/v1"
+EARS_MODEL_ENDPOINT = "http://localhost:8002/v1"
+MOUTH_MODEL_ENDPOINT = "http://localhost:8003/v1"
+```
 
 ---
 
