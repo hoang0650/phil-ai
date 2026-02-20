@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Đường dẫn
-FACTORY_DIR="./training_factory/outputs"
+FACTORY_DIR="./phil_training_factory/outputs"
 INFERENCE_DIR="./phil_inference/models"
 
 mkdir -p $INFERENCE_DIR

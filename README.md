@@ -94,7 +94,7 @@ ai-sale-agent/
 Yêu cầu: NVIDIA H200 (141GB VRAM).
 Kết nối SSH vào Runpod và chạy:
 ```bash
-git clone https://github.com/hoang0650/ai-sale-agent
+git clone https://github.com/hoang0650/phil-ai
 cd phil_training_factory
 pip install -r requirements.txt
 ### Khai báo nhiều biến môi trường
