@@ -77,7 +77,24 @@ Dự án này được tối ưu hóa cho **Runpod H200 Pod**.
 ai-sale-agent/
 ├── 🏭 phil_training_factory/    # Xưởng luyện Model (Chạy 1 lần)
 │   ├── configs/                 # Chỉnh tham số train
+│   │   ├── brain_deepseek_70b.yaml
+│   │   ├── vision_internvl2_76b.yaml
+│   │   ├── ear_whisper_large.yaml
+│   │   └── mouth_f5_tts.yaml
 │   ├── scripts/                 # Script tự động hóa
+│   │   ├── 01_prepare_data.sh      # Chuẩn bị dữ liệu
+│   │   ├── 02_train_brain.sh       # Train Brain (Unsloth)
+│   │   ├── 03_train_vision.sh      # Train Vision (LLaMA-Factory)
+│   │   ├── 04_train_senses.sh      # Train Audio (Whisper + F5-TTS)
+│   │   ├── run_all.sh              # Chạy toàn bộ pipeline
+│   │   └── run_internvl2.sh        # Train Vision riêng
+│   ├── src/                     # Source code
+│   │   ├── data_prep/           # Xử lý dữ liệu
+│   │   └── trainers/           # Training logic
+│   │       ├── unsloth_trainer.py
+│   │       ├── vision_wrapper.py
+│   │       ├── whisper_trainer.py
+│   │       └── f5_tts_trainer.py
 │   └── outputs/                 # Nơi Model ra lò
 │
 ├── 🚀 phil_inference/           # Server triển khai (Chạy 24/7)
@@ -95,15 +112,18 @@ Yêu cầu: NVIDIA H200 (141GB VRAM).
 Kết nối SSH vào Runpod và chạy:
 ```bash
 git clone https://github.com/hoang0650/phil-ai
-cd phil_training_factory
+cd phil-ai
 pip install -r requirements.txt
-### Khai báo nhiều biến môi trường
-### Cách 1
+
+# Thiết lập biến môi trường (chọn 1 trong 3 cách)
+# Cách 1: Copy từ file mẫu
 cp .env.example .env
-### Cách 2
+
+# Cách 2: Tạo file .env thủ công
 echo "HF_TOKEN=hf_write_token_here" > .env
 echo "WANDB_API_KEY=write_wandb_api_key" >> .env
-### Cách 3
+
+# Cách 3: Tạo file .env với nội dung đầy đủ
 cat << EOF > .env
 HF_TOKEN=hf_write_token_here
 WANDB_API_KEY=write_wandb_api_key
@@ -116,10 +136,40 @@ Bạn chỉ cần chạy 1 lệnh duy nhất để train toàn bộ 4 model:
 # Script này sẽ tự động:
 # 1. Tải và xử lý dữ liệu (Dịch sang tiếng Việt)
 # 2. Train Brain (DeepSeek 70B)
-# 3. Train Vision (InternVL2 76B)
+# 3. Train Vision (InternVL2 76B) 
 # 4. Train Audio (Whisper + F5-TTS)
+cd phil_training_factory
 chmod +x scripts/*.sh
 ./scripts/run_all.sh
+```
+
+**Lưu ý về Vision Training:**
+- Script `03_train_vision.sh` và `run_internvl2.sh` đều sử dụng `vision_wrapper.py` để đảm bảo nhất quán
+- Wrapper này đọc config từ `configs/vision_internvl2_76b.yaml` và tự động gọi LLaMA-Factory
+- Cách tiếp cận này giúp dễ dàng thay đổi tham số training mà không cần sửa script
+
+**Tình trạng Scripts:**
+- ✅ Tất cả scripts đã được làm sạch (loại bỏ `export PYTHONPATH=$PYTHONPATH:.`)
+- ✅ Scripts chạy độc lập mà không cần cấu hình PYTHONPATH thủ công
+- ✅ Vision wrapper tự động xử lý môi trường và dependencies
+
+**Hoặc chạy từng bước riêng lẻ:**
+```bash
+# 1. Prepare data (Dịch và xử lý dữ liệu)
+cd phil_training_factory
+./scripts/01_prepare_data.sh
+
+# 2. Train Brain model (DeepSeek 70B với Unsloth)
+./scripts/02_train_brain.sh
+
+# 3. Train Vision model (InternVL2 với LLaMA-Factory)
+./scripts/03_train_vision.sh
+
+# 4. Train Senses (Whisper + F5-TTS)
+./scripts/04_train_senses.sh
+
+# Alternative: Train Vision model trực tiếp với InternVL2
+./scripts/run_internvl2.sh
 ```
 Sau khi chạy xong, kết quả sẽ nằm trong thư mục `phil_training_factory/outputs/`.
 
